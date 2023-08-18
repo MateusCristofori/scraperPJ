@@ -1,52 +1,56 @@
 import puppeteer from "puppeteer";
-// import { codeProcessData } from "./data/codeProcessData";
+import { codeProcessData } from "./data/codeProcessData";
+import { createPDF } from "./pdf/pdfMaker";
+import fs from "fs";
+import PDFDocument from "pdfkit";
+import { checkProcessCode } from "./helpers/checkProcessCode";
+import { index } from "cheerio/lib/api/traversing";
+
+const doc = new PDFDocument();
+doc.pipe(fs.createWriteStream("output.pdf"));
+
+const results: string[] = [];
 
 (async () => {
-  const browser = await puppeteer.launch({
-    headless: false,
-  });
+  for (let index = 0; index < codeProcessData.length; index++) {
+    const browser = await puppeteer.launch({
+      headless: false,
+    });
 
-  const page = await browser.newPage();
+    const page = await browser.newPage();
 
-  await page.setViewport({
-    width: 1366,
-    height: 768,
-    deviceScaleFactor: 1,
-  });
+    await page.setViewport({
+      width: 1366,
+      height: 768,
+      deviceScaleFactor: 1,
+    });
 
-  await page.goto(
-    "https://pje1g.trf1.jus.br/consultapublica/ConsultaPublica/listView.seam"
-  );
+    await checkProcessCode(codeProcessData[index], page);
 
-  const input = await page.$(
-    "input[id='fPP:numProcesso-inputNumeroProcessoDecoration:numProcesso-inputNumeroProcesso']"
-  );
-  await input?.type("1003987-11.2022.4.01.3001");
+    const input = await page.$(
+      "input[id='fPP:numProcesso-inputNumeroProcessoDecoration:numProcesso-inputNumeroProcesso']"
+    );
 
-  const button = await page.$("input[id='fPP:searchProcessos']");
-  await button?.click();
+    await input?.type(`${codeProcessData[index]}`);
+    await page.waitForTimeout(2000);
 
-  setTimeout(async () => {
+    const button = await page.$("input[id='fPP:searchProcessos']");
+    await button?.click();
+    await page.waitForTimeout(2000);
+
     const divList = await page.$("tbody[id='fPP:processosTable:tb']");
+    const status = await page.evaluate(
+      (el) => el?.querySelector(":nth-child(3)")?.textContent,
+      divList
+    );
+    await page.waitForTimeout(1000);
 
-    const results: any[] = [];
-    for (const values in divList) {
-      const value = await page.evaluate(
-        (el) => el?.querySelector(":nth-child(3)")?.textContent,
-        divList
-      );
-      results.push(value as never);
-      console.log(value);
-      console.log(results);
-    }
+    results.push(codeProcessData[index], status as string);
+    createPDF(results, doc);
 
-    if (divList) {
-      console.log("Achou o status no td");
-      // console.log(value);
-    }
-  }, 1000);
-
-  setTimeout(async () => {
-    await browser.close();
-  }, 100000000);
+    setTimeout(async () => {
+      await browser.close();
+    }, 100000000);
+  }
+  console.log(results);
 })();
